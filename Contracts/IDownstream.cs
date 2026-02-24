@@ -7,6 +7,6 @@ namespace DownstreamMessages.Contracts
 {
     public interface IDownstream
     {
-        void OnMessage(Message m);
+        void OnMessage(Message msg);
     }
 }

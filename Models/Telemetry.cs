@@ -7,8 +7,8 @@ namespace DownstreamMessages.Models
     public class Telemetry
     {
         public long Processed;
-        public long Dupes;
+        public long Duplicates;
         public long Gaps;
-        public long Evictions;
+        public long Eliminations;
     }
 }

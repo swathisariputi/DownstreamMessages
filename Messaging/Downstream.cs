@@ -21,13 +21,13 @@ namespace DownstreamMessages.Messaging
             {
                 if (msg.SequenceNumber < state.NextExpected)
                 {
-                    Counters.Dupes++;
+                    Counters.Duplicates++;
                     return;
                 }
 
                 if (state.Buffer.ContainsKey(msg.SequenceNumber))
                 {
-                    Counters.Dupes++;
+                    Counters.Duplicates++;
                     return;
                 }
 
@@ -49,10 +49,9 @@ namespace DownstreamMessages.Messaging
                 }
             }
         }
-
         private void ProcessAndAdvance(SessionState state, Message msg)
         {
-            OnMessage(msg);
+            Console.WriteLine($"Processed message: Session={msg.SessionId}, Seq={msg.SequenceNumber}, Payload={msg.Payload}");
             state.NextExpected++;
             Counters.Processed++;
         }
@@ -65,7 +64,7 @@ namespace DownstreamMessages.Messaging
             var largestSeq = GetLargestKey(state.Buffer);
             state.Buffer.Remove(largestSeq);
 
-            Counters.Evictions++;
+            Counters.Eliminations++;
         }
 
         private static long GetLargestKey(SortedDictionary<long, Message> dict)
@@ -78,14 +77,15 @@ namespace DownstreamMessages.Messaging
             return last;
         }
 
-        public IReadOnlyList<(long from, long to)> GetMissingRanges(string sessionId)
+        public string GetMissingRanges(string sessionId)
         {
             if (!_sessions.TryGetValue(sessionId, out var state))
-                return [];
+                return "No Session Found";
+            bool isMissed = false;
 
             lock (state.Lock)
             {
-                var ranges = new List<(long, long)>();
+                var ranges = "Missed ranges: ";
 
                 long expected = state.NextExpected;
 
@@ -93,12 +93,13 @@ namespace DownstreamMessages.Messaging
                 {
                     if (seq > expected)
                     {
-                        ranges.Add((expected, seq - 1));
+                        ranges += "(" + expected.ToString() + ", " + (seq - 1).ToString() + ")";
+                        isMissed = true;
                     }
 
                     expected = seq + 1;
                 }
-
+                if (!isMissed) return "No missed range";
                 return ranges;
             }
         }
