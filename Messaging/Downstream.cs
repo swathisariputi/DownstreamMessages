@@ -21,13 +21,13 @@ namespace DownstreamMessages.Messaging
             {
                 if (msg.SequenceNumber < state.NextExpected)
                 {
-                    Counters.Duplicates++;
+                    Counters.Dupes++;
                     return;
                 }
 
                 if (state.Buffer.ContainsKey(msg.SequenceNumber))
                 {
-                    Counters.Duplicates++;
+                    Counters.Dupes++;
                     return;
                 }
 
@@ -64,7 +64,7 @@ namespace DownstreamMessages.Messaging
             var largestSeq = GetLargestKey(state.Buffer);
             state.Buffer.Remove(largestSeq);
 
-            Counters.Eliminations++;
+            Counters.Evictions++;
         }
 
         private static long GetLargestKey(SortedDictionary<long, Message> dict)
