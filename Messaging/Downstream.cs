@@ -11,13 +11,18 @@ namespace DownstreamMessages.Messaging
     {
         private readonly ConcurrentDictionary<string, SessionState> _sessions = new();
         public Telemetry Counters { get; } = new();
-        private readonly int _maxBufferedPerSession = 3;
+        private readonly int _maxBufferedPerSession;
+
+        public Downstream(int maxBufferedPerSession = 100)
+        {
+            _maxBufferedPerSession = maxBufferedPerSession;
+        }
 
         public void OnMessage(Message msg)
         {
             var state = _sessions.GetOrAdd(msg.SessionId, _ => new SessionState());
 
-            lock (state.Lock)
+            lock (state)
             {
                 if (msg.SequenceNumber < state.NextExpected)
                 {
@@ -61,29 +66,18 @@ namespace DownstreamMessages.Messaging
             if (state.Buffer.Count <= _maxBufferedPerSession)
                 return;
 
-            var largestSeq = GetLargestKey(state.Buffer);
+            var largestSeq = state.Buffer.Keys.Max();
             state.Buffer.Remove(largestSeq);
 
             Counters.Evictions++;
         }
-
-        private static long GetLargestKey(SortedDictionary<long, Message> dict)
-        {
-            long last = 0;
-
-            foreach (var key in dict.Keys)
-                last = key;
-
-            return last;
-        }
-
         public string GetMissingRanges(string sessionId)
         {
             if (!_sessions.TryGetValue(sessionId, out var state))
                 return "No Session Found";
             bool isMissed = false;
 
-            lock (state.Lock)
+            lock (state)
             {
                 var ranges = "Missed ranges: ";
 
