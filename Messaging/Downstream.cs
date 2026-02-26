@@ -38,9 +38,8 @@ namespace DownstreamMessages.Messaging
 
                 if (msg.SequenceNumber > state.NextExpected)
                 {
+                    RegisterGap(state, state.NextExpected, msg.SequenceNumber - 1);
                     state.Buffer[msg.SequenceNumber] = msg;
-                    Counters.Gaps++;
-
                     EnforceBufferLimit(state);
                     return;
                 }
@@ -59,6 +58,7 @@ namespace DownstreamMessages.Messaging
             Console.WriteLine($"Processed message: Session={msg.SessionId}, Seq={msg.SequenceNumber}, Payload={msg.Payload}");
             state.NextExpected++;
             Counters.Processed++;
+            ResolveMissing(state, msg.SequenceNumber);
         }
 
         private void EnforceBufferLimit(SessionState state)
@@ -71,31 +71,90 @@ namespace DownstreamMessages.Messaging
 
             Counters.Evictions++;
         }
-        public string GetMissingRanges(string sessionId)
+        private void RegisterGap(SessionState state, long start, long end)
+        {
+            if (start > end)
+                return;
+
+            foreach (var (s, e) in state.MissingRanges)
+            {
+                if (start >= s && end <= e)
+                {
+                    return;
+                }
+                //else
+                //{
+                //    Counters.Gaps++;
+                //    break;
+                //}
+            }
+
+            Counters.Gaps++;
+            state.MissingRanges.Add((start, end));
+            MergeRanges(state.MissingRanges);
+        }
+
+        private void ResolveMissing(SessionState state, long seq)
+        {
+            for (int i = 0; i < state.MissingRanges.Count; i++)
+            {
+                var (start, end) = state.MissingRanges[i];
+
+                if (seq < start || seq > end)
+                    continue;
+
+                state.MissingRanges.RemoveAt(i);
+
+                if (start <= seq - 1)
+                    state.MissingRanges.Add((start, seq - 1));
+
+                if (seq + 1 <= end)
+                    state.MissingRanges.Add((seq + 1, end));
+
+                MergeRanges(state.MissingRanges);
+                return;
+            }
+        }
+        public IReadOnlyList<(long start, long end)> GetMissingRanges(string sessionId)
         {
             if (!_sessions.TryGetValue(sessionId, out var state))
-                return "No Session Found";
-            bool isMissed = false;
+                return Array.Empty<(long, long)>();
 
             lock (state)
             {
-                var ranges = "Missed ranges: ";
-
-                long expected = state.NextExpected;
-
-                foreach (var seq in state.Buffer.Keys)
+                foreach(var x in state.MissingRanges)
                 {
-                    if (seq > expected)
-                    {
-                        ranges += "(" + expected.ToString() + ", " + (seq - 1).ToString() + ")";
-                        isMissed = true;
-                    }
-
-                    expected = seq + 1;
+                    Console.WriteLine(x);
                 }
-                if (!isMissed) return "No missed range";
-                return ranges;
+                return state.MissingRanges.ToList();
             }
+        }
+
+        private void MergeRanges(List<(long start, long end)> ranges)
+        {
+            if (ranges.Count <= 1)
+                return;
+
+            var ordered = ranges.OrderBy(r => r.start).ToList();
+            ranges.Clear();
+
+            var current = ordered[0];
+
+            for (int i = 1; i < ordered.Count; i++)
+            {
+                var next = ordered[i];
+
+                if (next.start <= current.end + 1)
+                {
+                    current.end = Math.Max(current.end, next.end);
+                }
+                else
+                {
+                    ranges.Add(current);
+                    current = next;
+                }
+            }
+            ranges.Add(current);
         }
     }
 }

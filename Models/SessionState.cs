@@ -8,5 +8,7 @@ namespace DownstreamMessages.Models
     {
         public long NextExpected { get; set; } = 1;
         public SortedDictionary<long, Message> Buffer { get; } = new();
+
+        public List<(long start, long end)> MissingRanges = new();
     }
 }
